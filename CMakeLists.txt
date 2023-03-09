@@ -17,16 +17,34 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(smap_interfaces REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-add_executable(smap_sampler_node.cpp src/smap_sampler_node.cpp)
-target_include_directories(smap_sampler_node.cpp PUBLIC
+add_executable(smap_sampler_node src/smap_sampler_node.cpp)
+
+target_include_directories(smap_sampler_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
-install(TARGETS smap_sampler_node.cpp
+ament_target_dependencies(
+  smap_sampler_node
+  rclcpp
+  tf2
+  tf2_ros
+  sensor_msgs
+  geometry_msgs
+  smap_interfaces
+)
+
+install(TARGETS smap_sampler_node
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
