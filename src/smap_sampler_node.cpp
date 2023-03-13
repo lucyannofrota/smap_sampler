@@ -20,8 +20,9 @@
 
 // TODO: Configure callback groups
 
-#define FROM_FRAME std::string("map")
-#define TO_FRAME std::string("base_link")
+#define MAP_FRAME std::string("map")
+#define BASE_LINK_FRAME std::string("base_link")
+#define CAMERA_FRAME std::string("zed2_left_camera_frame")
 
 #define RAD2DEG(x) 180 * x / M_PI
 
@@ -34,8 +35,8 @@ class smap_sampler : public rclcpp::Node
 {
 private:
   //** Variables **//
-  sensor_msgs::msg::Image last_image_msg;
-  sensor_msgs::msg::PointCloud2 last_pcl2_msg;
+  sensor_msgs::msg::Image::SharedPtr last_image_msg;
+  sensor_msgs::msg::PointCloud2::SharedPtr last_pcl2_msg;
 
   // TF
   std::unique_ptr<tf2_ros::Buffer> tf_buffer;
@@ -95,47 +96,28 @@ public:
 
   void on_process(void) // Pooling
   {
-    // RCLCPP_DEBUG(this->get_logger(),"Process smap_sampler");
   }
 
 private:
 
-  bool sample_pose(geometry_msgs::msg::PoseStamped &current_pose)
+  bool get_transform(const std::string &target_frame, const std::string &source_frame, geometry_msgs::msg::TransformStamped &transform)
   {
-    // Sample Position
-    geometry_msgs::msg::TransformStamped transform;
-
     // https://docs.ros.org/en/foxy/Tutorials/Intermediate/Tf2/Writing-A-Tf2-Listener-Cpp.html
     try {
       transform = tf_buffer->lookupTransform(
-        FROM_FRAME, TO_FRAME,
+        target_frame, source_frame,
+        //rclcpp::Time(0)
         tf2::TimePointZero
+        //rclcpp::Duration(0,)
       );
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN(
-        this->get_logger(), "Could not transform %s to %s: %s",
-        TO_FRAME.c_str(), FROM_FRAME.c_str(), ex.what()
+        this->get_logger(), "Get Could not transform %s to %s: %s",
+        source_frame.c_str(), target_frame.c_str(), ex.what()
       );
       return true;
+      //tf_buffer->waitForTransform()
     }
-
-    double roll, pitch, yaw;
-    tf2::Matrix3x3(
-      tf2::Quaternion(
-        transform.transform.rotation.x,
-        transform.transform.rotation.y,
-        transform.transform.rotation.z,
-        transform.transform.rotation.w
-      )).getRPY(roll, pitch, yaw);
-
-    current_pose.header.frame_id = "/map";
-    current_pose.header.stamp = this->get_clock().get()->now();
-
-    current_pose.pose.position.x = transform.transform.translation.x;
-    current_pose.pose.position.y = transform.transform.translation.y;
-    current_pose.pose.position.z = transform.transform.translation.z;
-    current_pose.pose.orientation = transform.transform.rotation;
-
     return false;
   }
 
@@ -143,25 +125,89 @@ private:
   {
     // Sample Position
     static geometry_msgs::msg::PoseStamped current_pose;
-    this->sample_pose(current_pose);
+    static geometry_msgs::msg::TransformStamped transform;
+
+    if(this->get_transform(MAP_FRAME,BASE_LINK_FRAME,transform)) RCLCPP_WARN(
+      this->get_logger(),
+      "Invalid pose sampled."
+    );
+    
+    current_pose.header = transform.header;
+    current_pose.pose.position.x = transform.transform.translation.x;
+    current_pose.pose.position.y = transform.transform.translation.y;
+    current_pose.pose.position.z = transform.transform.translation.z;
+    current_pose.pose.orientation = transform.transform.rotation;
+
     this->pose_pub->publish(current_pose);
   }
 
   void data_sampler(void)
   { 
 
-    static bool invalid = true;
+    static bool invalid = false;
     // Sample Position
     static smap_interfaces::msg::SmapData msg;
-    invalid = this->sample_pose(msg.stamped_pose);
+
+    static geometry_msgs::msg::PoseStamped current_pose;
+    static geometry_msgs::msg::TransformStamped transform;
+
+    if(this->get_transform(MAP_FRAME,BASE_LINK_FRAME,transform)){
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Invalid pose sampled."
+      );
+      invalid = true;
+    }
+    else{
+      invalid = false;
+      msg.stamped_pose.header = transform.header;
+      msg.stamped_pose.pose.position.x = transform.transform.translation.x;
+      msg.stamped_pose.pose.position.y = transform.transform.translation.y;
+      msg.stamped_pose.pose.position.z = transform.transform.translation.z;
+      msg.stamped_pose.pose.orientation = transform.transform.rotation;
+    }
     // TODO: Implement semaphores
 
     // Sample Image
-    if(!invalid) msg.rgb_image = this->last_image_msg;
-    // TODO: invalid verification + warn
-    invalid |= 0;
+    //RCLCPP_INFO(
+    //    this->get_logger(),
+    //    "Std imag:\n\t data: %i\n\t encoding: %s\n\t header: \n\t\t frame_id: %s\n\t height: %u\n\t width: %u\n\t is_beg: %u\n\t step: %u",
+    //    this->comp_img.data.empty(),
+    //    this->comp_img.encoding,
+    //    this->comp_img.header.frame_id,
+    //    this->comp_img.height,
+    //    this->comp_img.width,
+    //    this->comp_img.is_bigendian,
+    //    this->comp_img.step
+    //  );
+    //sensor_msgs::msg::PointCloud2
+    //const 
+    if(!invalid){
+      // Verify the integrity of the msg
+      if(
+        this->last_image_msg == nullptr || this->last_image_msg->height == 0 || 
+        this->last_image_msg->width == 0 || this->last_image_msg->step == 0
+      ){
+        invalid = true;
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Invalid image sampled. "
+        );
+      }
+      else{
+        msg.rgb_image.header = this->last_image_msg->header;
+        msg.rgb_image.height = this->last_image_msg->height;
+        msg.rgb_image.width = this->last_image_msg->width;
+        msg.rgb_image.is_bigendian = this->last_image_msg->is_bigendian;
+        msg.rgb_image.step = this->last_image_msg->step;
+        msg.rgb_image.encoding = this->last_image_msg->encoding;
+        msg.rgb_image.data = this->last_image_msg->data;
+      }
+    }
+
     // Sample Point Cloud 2
-    if(!invalid) msg.pointcloud = this->last_pcl2_msg;
+    // if(!invalid) msg.pointcloud = this->last_pcl2_msg;
+    //tf2::doTransform()
     // TODO: invalid verification + warn
     invalid |= 0;
 
@@ -170,21 +216,20 @@ private:
     else{
       RCLCPP_WARN(
         this->get_logger(),
-        "Invalid sampled data."
+        "Invalid data sampled."
       );
     }
   }
 
-  void image_callback(const sensor_msgs::msg::Image::SharedPtr msg)
+  void image_callback(sensor_msgs::msg::Image::SharedPtr msg)
   {
-    this->last_image_msg = *msg;
+    this->last_image_msg = msg;
   }
 
-  void pcl2_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+  void pcl2_callback(sensor_msgs::msg::PointCloud2::SharedPtr msg)
   {
-    this->last_pcl2_msg = *msg;
+    this->last_pcl2_msg = msg;
   }
-
 //public:
   
 };
@@ -197,6 +242,19 @@ int main(int argc, char ** argv)
   (void) argv;
 
   rclcpp::init(argc,argv);
+
+  //while(rclcpp::ok()){
+  //  try{
+  //      _smap_node->on_process(); // Pooling
+  //      _topological_map_node->on_process(); // Pooling
+  //      executor.spin_once();
+  //    }catch (std::exception& e){
+  //      std::cout << "Exception!" << std::endl;
+  //      std::cout << e.what() << std::endl;
+  //    }
+  //  }
+  //  rclcpp::shutdown();
+  //}
 
   rclcpp::spin(std::make_shared<smap::smap_sampler>());
 
