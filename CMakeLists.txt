@@ -17,13 +17,18 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(tf2 REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(tf2_ros REQUIRED)
-find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(smap_interfaces REQUIRED)
+
+find_package(tf2 REQUIRED)
+#find_package(tf2_ros REQUIRED)
+find_package(tf2_sensor_msgs REQUIRED)
+#find_package(orocos_kdl REQUIRED)
+#find_library(OROCOS_KDL orocos-kdl)
+#set(orocos_kdl_LIBRARIES ${OROCOS_KDL})
+
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
@@ -38,11 +43,15 @@ ament_target_dependencies(
   smap_sampler_node
   rclcpp
   tf2
-  tf2_ros
+  #tf2_ros
+  #tf2_msgs
+  tf2_sensor_msgs
   sensor_msgs
   geometry_msgs
   smap_interfaces
 )
+
+#target_link_libraries(smap_sampler_node  ${orocos_kdl_LIBRARIES})
 
 install(TARGETS smap_sampler_node
   DESTINATION lib/${PROJECT_NAME})

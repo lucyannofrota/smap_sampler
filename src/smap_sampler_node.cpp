@@ -1,10 +1,9 @@
-
 #include <memory>
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/transform_listener.h"
+#include "tf2_sensor_msgs/tf2_sensor_msgs.h"
 
 #include "smap_interfaces/msg/smap_data.hpp"
-#include "std_msgs/msg/string.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 
@@ -19,12 +18,9 @@
 // Node
 
 // TODO: Configure callback groups
-
 #define MAP_FRAME std::string("map")
 #define BASE_LINK_FRAME std::string("base_link")
 #define CAMERA_FRAME std::string("zed2_left_camera_frame")
-
-#define RAD2DEG(x) 180 * x / M_PI
 
 using std::placeholders::_1;
 
@@ -43,8 +39,9 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener{nullptr};
 
   // Publisher
-  rclcpp::Publisher<smap_interfaces::msg::SmapData>::SharedPtr SmapData_pub = this->create_publisher<smap_interfaces::msg::SmapData>("/smap_sampler/data", 10);
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("/smap_sampler/pose", 10);
+  rclcpp::Publisher<smap_interfaces::msg::SmapData>::SharedPtr SmapData_pub = this->create_publisher<smap_interfaces::msg::SmapData>("/smap/sampler/data", 10);
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("/smap/sampler/pose", 10);
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pcl_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/smap/sampler/pcl", 10);
 
   // Subscriptions
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub = this->create_subscription<sensor_msgs::msg::Image>(
@@ -103,12 +100,12 @@ private:
   bool get_transform(const std::string &target_frame, const std::string &source_frame, geometry_msgs::msg::TransformStamped &transform)
   {
     // https://docs.ros.org/en/foxy/Tutorials/Intermediate/Tf2/Writing-A-Tf2-Listener-Cpp.html
+    //tf_buffer->lookupTransform()
     try {
       transform = tf_buffer->lookupTransform(
         target_frame, source_frame,
-        //rclcpp::Time(0)
-        tf2::TimePointZero
-        //rclcpp::Duration(0,)
+        rclcpp::Time(0, 0, RCL_SYSTEM_TIME),
+        rclcpp::Duration(1,0)
       );
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN(
@@ -169,32 +166,19 @@ private:
     // TODO: Implement semaphores
 
     // Sample Image
-    //RCLCPP_INFO(
-    //    this->get_logger(),
-    //    "Std imag:\n\t data: %i\n\t encoding: %s\n\t header: \n\t\t frame_id: %s\n\t height: %u\n\t width: %u\n\t is_beg: %u\n\t step: %u",
-    //    this->comp_img.data.empty(),
-    //    this->comp_img.encoding,
-    //    this->comp_img.header.frame_id,
-    //    this->comp_img.height,
-    //    this->comp_img.width,
-    //    this->comp_img.is_bigendian,
-    //    this->comp_img.step
-    //  );
-    //sensor_msgs::msg::PointCloud2
-    //const 
     if(!invalid){
       // Verify the integrity of the msg
       if(
         this->last_image_msg == nullptr || this->last_image_msg->height == 0 || 
-        this->last_image_msg->width == 0 || this->last_image_msg->step == 0
+        this->last_image_msg->width == 0 || this->last_image_msg->step == 0 || 
+        this->last_image_msg->data.empty()
       ){
         invalid = true;
         RCLCPP_WARN(
           this->get_logger(),
-          "Invalid image sampled. "
+          "Invalid image sampled."
         );
-      }
-      else{
+      }else{
         msg.rgb_image.header = this->last_image_msg->header;
         msg.rgb_image.height = this->last_image_msg->height;
         msg.rgb_image.width = this->last_image_msg->width;
@@ -206,10 +190,26 @@ private:
     }
 
     // Sample Point Cloud 2
-    // if(!invalid) msg.pointcloud = this->last_pcl2_msg;
-    //tf2::doTransform()
-    // TODO: invalid verification + warn
-    invalid |= 0;
+    if(!invalid){
+      // Verify the integrity of the msg
+      if(
+        this->last_pcl2_msg == nullptr || this->last_pcl2_msg->height == 0 || 
+        this->last_pcl2_msg->width == 0 || this->last_pcl2_msg->data.empty() || 
+        this->last_pcl2_msg->fields.empty() || this->last_pcl2_msg->row_step == 0 || 
+        this->last_pcl2_msg->point_step == 0
+      ){
+        invalid = true;
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Invalid point cloud sampled."
+        );
+      }else{
+        // Transform points
+        this->get_transform(MAP_FRAME,CAMERA_FRAME,transform);
+        tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
+        this->pcl_pub->publish(msg.pointcloud);
+      }
+    }
 
     // Publish msg
     if(!invalid) this->SmapData_pub->publish(msg);
