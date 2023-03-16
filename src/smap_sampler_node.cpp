@@ -112,6 +112,7 @@ public:
       this->sub_options
     );
 
+    RCLCPP_INFO(this->get_logger(), "smap_sampler_node initialized!");
   }
   ~smap_sampler_node()
   {
