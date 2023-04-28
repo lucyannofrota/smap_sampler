@@ -236,8 +236,10 @@ private:
         );
       }else{
         // Transform points
-        this->get_transform(MAP_FRAME,CAMERA_FRAME,transform);
-        tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
+        this->get_transform(MAP_FRAME,CAMERA_FRAME,msg.robot_to_map);
+        // tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
+        msg.pointcloud = *(this->last_pcl2_msg);
+        msg.pointcloud.header.frame_id = MAP_FRAME;
         this->pcl_pub->publish(msg.pointcloud);
       }
       sem_post(&(this->sem_pcl));
