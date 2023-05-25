@@ -94,9 +94,9 @@ public:
     );
 
     // Publisher
-    SmapData_pub = this->create_publisher<smap_interfaces::msg::SmapData>("/smap/sampler/data", 10);
-    pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("/smap/sampler/pose", 10);
-    pcl_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/smap/sampler/pcl", 10);
+    SmapData_pub = this->create_publisher<smap_interfaces::msg::SmapData>(std::string(this->get_namespace())+std::string("/sampler/data"), 10);
+    pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>(std::string(this->get_namespace())+std::string("/sampler/pose"), 10);
+    pcl_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(std::string(this->get_namespace())+std::string("/sampler/pcl"), 10);
 
     // Subscriptions
     image_sub = this->create_subscription<sensor_msgs::msg::Image>(
