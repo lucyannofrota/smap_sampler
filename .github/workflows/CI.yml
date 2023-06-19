@@ -12,10 +12,10 @@ jobs:
     steps:
       - name: Checking out
         uses: actions/checkout@v3
-      - name: Clone repository
-        run: git clone https://github.com/lucyannofrota/smap_interfaces.git
+        with:
+          repository: 'lucyannofrota/smap_interfaces.git'
       - name: Building and testing
         uses: ichiro-its/ros2-ci@v1.0.0
-        with: 
+        with:
           ros2-distro: foxy
 
