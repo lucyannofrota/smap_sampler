@@ -13,8 +13,8 @@ jobs:
       - name: Checking out
         uses: actions/checkout@v3
         with:
-          repository: 'lucyannofrota/smap_interfaces.git'
-          ref: 'main'
+          repository: lucyannofrota/smap_interfaces.git
+          ref: main
       - name: Building and testing
         uses: ichiro-its/ros2-ci@v1.0.0
         with:
