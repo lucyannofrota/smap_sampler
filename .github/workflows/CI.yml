@@ -10,7 +10,9 @@ jobs:
     name: smap_sampler build
     runs-on: ubuntu-20.04
     steps:
-      - name: Checking out
+      - name: Checking out smap_smapler
+      - uses: actions/checkout@v3
+      - name: Checking out smap_interfaces
         uses: actions/checkout@v3
         with:
           repository: lucyannofrota/smap_interfaces.git
