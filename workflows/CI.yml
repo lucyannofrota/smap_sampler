@@ -1,0 +1,21 @@
+name: Build
+run-name: CI Build/Test
+on:
+  push:
+      branches:
+        - main
+
+jobs:
+  Build:
+    name: smap_sampler build
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checking out
+        uses: actions/checkout@v3
+      - name: Clone repository
+        run: git clone https://github.com/lucyannofrota/smap_interfaces.git
+      - name: Building and testing
+        uses: ichiro-its/ros2-ci@v1.0.0
+        with: 
+          ros2-distro: foxy
+
