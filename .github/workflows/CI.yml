@@ -2,8 +2,8 @@ name: Build
 run-name: CI Build/Test
 on:
   push:
-      branches:
-        - main
+      # branches:
+      #   - c++
 
 jobs:
   Build:
