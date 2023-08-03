@@ -47,6 +47,7 @@ class smap_sampler_node : public rclcpp::Node
     rclcpp::Publisher< smap_interfaces::msg::SmapData >::SharedPtr SmapData_pub;
     rclcpp::Publisher< geometry_msgs::msg::PoseStamped >::SharedPtr pose_pub;
     rclcpp::Publisher< sensor_msgs::msg::PointCloud2 >::SharedPtr pcl_pub;
+    rclcpp::Publisher< sensor_msgs::msg::Image >::SharedPtr image_pub;
 
     // Subscriptions
     rclcpp::Subscription< sensor_msgs::msg::Image >::SharedPtr image_sub;
@@ -55,6 +56,10 @@ class smap_sampler_node : public rclcpp::Node
     // Timer
     rclcpp::TimerBase::SharedPtr pose_timer { nullptr };
     rclcpp::TimerBase::SharedPtr smap_data_timer { nullptr };
+
+    // Mutexes
+    std::mutex image_mutex;
+    std::mutex pcl_mutex;
 
   public:
 
@@ -75,9 +80,9 @@ class smap_sampler_node : public rclcpp::Node
         tf_buffer   = std::make_unique< tf2_ros::Buffer >( this->get_clock() );
         tf_listener = std::make_shared< tf2_ros::TransformListener >( *tf_buffer );
 
-        // Callbacks
+        // Timers
         this->smap_data_timer = this->create_wall_timer(
-            std::chrono::milliseconds( 250 ),  // Change Frequency
+            std::chrono::milliseconds( 50 ),  // Change Frequency
             std::bind( &smap_sampler_node::data_sampler, this ) );
 
         this->pose_timer = this->create_wall_timer(
@@ -91,6 +96,8 @@ class smap_sampler_node : public rclcpp::Node
             std::string( this->get_namespace() ) + std::string( "/sampler/pose" ), 10 );
         pcl_pub = this->create_publisher< sensor_msgs::msg::PointCloud2 >(
             std::string( this->get_namespace() ) + std::string( "/sampler/pcl" ), 10 );
+        image_pub = this->create_publisher< sensor_msgs::msg::Image >(
+            std::string( this->get_namespace() ) + std::string( "/sampler/image" ), 10 );
 
         // Subscriptions
         image_sub = this->create_subscription< sensor_msgs::msg::Image >(
@@ -137,100 +144,115 @@ class smap_sampler_node : public rclcpp::Node
 
     void pose_sampler( void )
     {
-        // Sample Position
-        static geometry_msgs::msg::PoseStamped current_pose;
-        static geometry_msgs::msg::TransformStamped transform;
+        if( this->pose_pub->get_subscription_count() > 0 )
+        {
+            // Sample Position
+            static geometry_msgs::msg::PoseStamped current_pose;
+            static geometry_msgs::msg::TransformStamped transform;
 
-        if( this->get_transform( MAP_FRAME, BASE_LINK_FRAME, transform ) )
-            RCLCPP_WARN( this->get_logger(), "Invalid pose sampled." );
+            if( this->get_transform( MAP_FRAME, BASE_LINK_FRAME, transform ) )
+                RCLCPP_WARN( this->get_logger(), "Invalid pose sampled." );
 
-        current_pose.header           = transform.header;
-        current_pose.pose.position.x  = transform.transform.translation.x;
-        current_pose.pose.position.y  = transform.transform.translation.y;
-        current_pose.pose.position.z  = transform.transform.translation.z;
-        current_pose.pose.orientation = transform.transform.rotation;
+            current_pose.header           = transform.header;
+            current_pose.pose.position.x  = transform.transform.translation.x;
+            current_pose.pose.position.y  = transform.transform.translation.y;
+            current_pose.pose.position.z  = transform.transform.translation.z;
+            current_pose.pose.orientation = transform.transform.rotation;
 
-        this->pose_pub->publish( current_pose );
+            this->pose_pub->publish( current_pose );
+        }
     }
 
     void data_sampler( void )
     {
-
-        static bool invalid = false;
-
-        // Sample Position
-        static smap_interfaces::msg::SmapData msg;
-        static geometry_msgs::msg::PoseStamped current_pose;
-        static geometry_msgs::msg::TransformStamped transform;
-
-        if( this->get_transform( MAP_FRAME, BASE_LINK_FRAME, transform ) )
+        if( ( this->pcl_pub->get_subscription_count() + this->SmapData_pub->get_subscription_count()
+              + this->image_pub->get_subscription_count() )
+            > 0 )
         {
-            RCLCPP_WARN( this->get_logger(), "Invalid pose sampled." );
-            invalid = true;
-        }
-        else
-        {
-            invalid                           = false;
-            msg.stamped_pose.header           = transform.header;
-            msg.stamped_pose.pose.position.x  = transform.transform.translation.x;
-            msg.stamped_pose.pose.position.y  = transform.transform.translation.y;
-            msg.stamped_pose.pose.position.z  = transform.transform.translation.z;
-            msg.stamped_pose.pose.orientation = transform.transform.rotation;
 
-            // Set image and pcl semaphores
-            sem_wait( &( this->sem_image ) );
-            sem_wait( &( this->sem_pcl ) );
-        }
+            RCLCPP_INFO( this->get_logger(), "data_sampler()" );
 
-        // Sample Image
-        if( !invalid )
-        {
-            // Verify the integrity of the msg
-            if( this->last_image_msg == nullptr || this->last_image_msg->height == 0 || this->last_image_msg->width == 0
-                || this->last_image_msg->step == 0 || this->last_image_msg->data.empty() )
+            bool invalid = false;
+
+            // Sample Position
+            static smap_interfaces::msg::SmapData msg;
+            static geometry_msgs::msg::PoseStamped current_pose;
+            static geometry_msgs::msg::TransformStamped transform;
+
+            if( this->get_transform( MAP_FRAME, BASE_LINK_FRAME, transform ) )
             {
+                RCLCPP_WARN( this->get_logger(), "Invalid pose sampled." );
                 invalid = true;
-                RCLCPP_WARN( this->get_logger(), "Invalid image sampled." );
             }
             else
             {
-                msg.rgb_image.header       = this->last_image_msg->header;
-                msg.rgb_image.height       = this->last_image_msg->height;
-                msg.rgb_image.width        = this->last_image_msg->width;
-                msg.rgb_image.is_bigendian = this->last_image_msg->is_bigendian;
-                msg.rgb_image.step         = this->last_image_msg->step;
-                msg.rgb_image.encoding     = this->last_image_msg->encoding;
-                msg.rgb_image.data         = this->last_image_msg->data;
-            }
-            sem_post( &( this->sem_image ) );
-        }
+                invalid                           = false;
+                msg.stamped_pose.header           = transform.header;
+                msg.stamped_pose.pose.position.x  = transform.transform.translation.x;
+                msg.stamped_pose.pose.position.y  = transform.transform.translation.y;
+                msg.stamped_pose.pose.position.z  = transform.transform.translation.z;
+                msg.stamped_pose.pose.orientation = transform.transform.rotation;
 
-        // Sample Point Cloud 2
-        if( !invalid )
-        {
-            // Verify the integrity of the msg
-            if( this->last_pcl2_msg == nullptr || this->last_pcl2_msg->height == 0 || this->last_pcl2_msg->width == 0
-                || this->last_pcl2_msg->data.empty() || this->last_pcl2_msg->fields.empty()
-                || this->last_pcl2_msg->row_step == 0 || this->last_pcl2_msg->point_step == 0 )
-            {
-                invalid = true;
-                RCLCPP_WARN( this->get_logger(), "Invalid point cloud sampled." );
+                // Set image and pcl semaphores
+                sem_wait( &( this->sem_image ) );
+                sem_wait( &( this->sem_pcl ) );
             }
-            else
-            {
-                // Transform points
-                this->get_transform( MAP_FRAME, CAMERA_FRAME, msg.camera_to_map );
-                // tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
-                msg.pointcloud                 = *( this->last_pcl2_msg );
-                msg.pointcloud.header.frame_id = MAP_FRAME;
-                this->pcl_pub->publish( msg.pointcloud );
-            }
-            sem_post( &( this->sem_pcl ) );
-        }
 
-        // Publish msg
-        if( !invalid ) this->SmapData_pub->publish( msg );
-        else RCLCPP_WARN( this->get_logger(), "Invalid data sampled." );
+            // Sample Image
+            if( !invalid )
+            {
+                // Verify the integrity of the msg
+                if( this->last_image_msg == nullptr || this->last_image_msg->height == 0
+                    || this->last_image_msg->width == 0 || this->last_image_msg->step == 0
+                    || this->last_image_msg->data.empty() )
+                {
+                    invalid = true;
+                    RCLCPP_WARN( this->get_logger(), "Invalid image sampled." );
+                }
+                else
+                {
+                    msg.rgb_image.header       = this->last_image_msg->header;
+                    msg.rgb_image.height       = this->last_image_msg->height;
+                    msg.rgb_image.width        = this->last_image_msg->width;
+                    msg.rgb_image.is_bigendian = this->last_image_msg->is_bigendian;
+                    msg.rgb_image.step         = this->last_image_msg->step;
+                    msg.rgb_image.encoding     = this->last_image_msg->encoding;
+                    msg.rgb_image.data         = this->last_image_msg->data;
+                    if( this->image_pub->get_subscription_count() > 0 ) this->image_pub->publish( msg.rgb_image );
+                }
+                sem_post( &( this->sem_image ) );
+            }
+
+            // Sample Point Cloud 2
+            if( !invalid )
+            {
+                // Verify the integrity of the msg
+                if( this->last_pcl2_msg == nullptr || this->last_pcl2_msg->height == 0
+                    || this->last_pcl2_msg->width == 0 || this->last_pcl2_msg->data.empty()
+                    || this->last_pcl2_msg->fields.empty() || this->last_pcl2_msg->row_step == 0
+                    || this->last_pcl2_msg->point_step == 0 )
+                {
+                    invalid = true;
+                    RCLCPP_WARN( this->get_logger(), "Invalid point cloud sampled." );
+                }
+                else
+                {
+                    this->get_transform( MAP_FRAME, CAMERA_FRAME, msg.camera_to_map );
+                    msg.pointcloud                 = *( this->last_pcl2_msg );
+                    msg.pointcloud.header.frame_id = MAP_FRAME;
+                    if( this->pcl_pub->get_subscription_count() > 0 )
+                    {
+                        // tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
+                        this->pcl_pub->publish( msg.pointcloud );
+                    }
+                }
+                sem_post( &( this->sem_pcl ) );
+            }
+
+            // Publish msg
+            if( !invalid ) this->SmapData_pub->publish( msg );
+            else RCLCPP_WARN( this->get_logger(), "Invalid data sampled." );
+        }
     }
 
     void image_callback( sensor_msgs::msg::Image::SharedPtr msg )
