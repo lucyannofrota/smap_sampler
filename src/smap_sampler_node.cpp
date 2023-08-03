@@ -181,11 +181,6 @@ class smap_sampler_node : public rclcpp::Node
                     invalid = true;
                     RCLCPP_WARN( this->get_logger(), "Invalid image sampled." );
                 }
-                else
-                {
-                    if( this->image_pub->get_subscription_count() > 0 )
-                        this->image_pub->publish( this->SmapData_msg.rgb_image );
-                }
             }
 
             // Sample Point Cloud 2
@@ -203,16 +198,20 @@ class smap_sampler_node : public rclcpp::Node
                 {
                     this->get_transform( MAP_FRAME, CAMERA_FRAME, this->SmapData_msg.camera_to_map );
                     this->SmapData_msg.pointcloud.header.frame_id = MAP_FRAME;
-                    if( this->pcl_pub->get_subscription_count() > 0 )
-                    {
-                        // tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
-                        this->pcl_pub->publish( this->SmapData_msg.pointcloud );
-                    }
                 }
             }
 
             // Publish msg
-            if( !invalid ) this->SmapData_pub->publish( this->SmapData_msg );
+            if( !invalid ){
+              this->SmapData_pub->publish( this->SmapData_msg );
+              if( this->pcl_pub->get_subscription_count() > 0 )
+              {
+                  // tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
+                  this->pcl_pub->publish( this->SmapData_msg.pointcloud );
+              }
+              if( this->image_pub->get_subscription_count() > 0 )
+                  this->image_pub->publish( this->SmapData_msg.rgb_image );
+            }
             else RCLCPP_WARN( this->get_logger(), "Invalid data sampled." );
         }
     }
