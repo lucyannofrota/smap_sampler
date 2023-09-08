@@ -31,6 +31,7 @@ class smap_sampler_node : public rclcpp::Node
 
     // Variables
     smap_interfaces::msg::SmapData SmapData_msg;
+    bool new_data_available = false;
 
     // TF
     std::unique_ptr< tf2_ros::Buffer > tf_buffer;
@@ -147,7 +148,8 @@ class smap_sampler_node : public rclcpp::Node
     {
         if( ( this->pcl_pub->get_subscription_count() + this->SmapData_pub->get_subscription_count()
               + this->image_pub->get_subscription_count() )
-            > 0 )
+                > 0
+            && this->new_data_available )
         {
 
             bool invalid = false;
@@ -202,21 +204,27 @@ class smap_sampler_node : public rclcpp::Node
             }
 
             // Publish msg
-            if( !invalid ){
-              this->SmapData_pub->publish( this->SmapData_msg );
-              if( this->pcl_pub->get_subscription_count() > 0 )
-              {
-                  // tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
-                  this->pcl_pub->publish( this->SmapData_msg.pointcloud );
-              }
-              if( this->image_pub->get_subscription_count() > 0 )
-                  this->image_pub->publish( this->SmapData_msg.rgb_image );
+            if( !invalid )
+            {
+                this->SmapData_pub->publish( this->SmapData_msg );
+                if( this->pcl_pub->get_subscription_count() > 0 )
+                {
+                    // tf2::doTransform(*(this->last_pcl2_msg),msg.pointcloud,transform);
+                    this->pcl_pub->publish( this->SmapData_msg.pointcloud );
+                }
+                if( this->image_pub->get_subscription_count() > 0 )
+                    this->image_pub->publish( this->SmapData_msg.rgb_image );
+                this->new_data_available = false;
             }
             else RCLCPP_WARN( this->get_logger(), "Invalid data sampled." );
         }
     }
 
-    void image_callback( sensor_msgs::msg::Image::SharedPtr msg ) { this->SmapData_msg.rgb_image = *msg; }
+    void image_callback( sensor_msgs::msg::Image::SharedPtr msg )
+    {
+        this->new_data_available     = true;
+        this->SmapData_msg.rgb_image = *msg;
+    }
 
     void pcl2_callback( sensor_msgs::msg::PointCloud2::SharedPtr msg ) { this->SmapData_msg.pointcloud = *msg; }
 };
