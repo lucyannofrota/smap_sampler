@@ -68,11 +68,11 @@ class smap_sampler_node : public rclcpp::Node
 
         // Timers
         this->smap_data_timer = this->create_wall_timer(
-            std::chrono::milliseconds( 50 ),  // Change Frequency
+            std::chrono::milliseconds( 4 ),  // Change Frequency
             std::bind( &smap_sampler_node::data_sampler, this ) );
 
         this->pose_timer = this->create_wall_timer(
-            std::chrono::milliseconds( 50 ),  // Change Frequency
+            std::chrono::milliseconds( 4 ),  // Change Frequency
             std::bind( &smap_sampler_node::pose_sampler, this ) );
 
         // Publisher
