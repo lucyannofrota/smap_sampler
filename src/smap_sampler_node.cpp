@@ -77,20 +77,20 @@ class smap_sampler_node : public rclcpp::Node
 
         // Publisher
         SmapData_pub = this->create_publisher< smap_interfaces::msg::SmapData >(
-            std::string( this->get_namespace() ) + std::string( "/sampler/data" ), 10 );
+            std::string( this->get_namespace() ) + std::string( "/sampler/data" ), 2 );
         pose_pub = this->create_publisher< geometry_msgs::msg::PoseStamped >(
-            std::string( this->get_namespace() ) + std::string( "/sampler/pose" ), 10 );
+            std::string( this->get_namespace() ) + std::string( "/sampler/pose" ), 2 );
         pcl_pub = this->create_publisher< sensor_msgs::msg::PointCloud2 >(
-            std::string( this->get_namespace() ) + std::string( "/sampler/pcl" ), 10 );
+            std::string( this->get_namespace() ) + std::string( "/sampler/pcl" ), 2 );
         image_pub = this->create_publisher< sensor_msgs::msg::Image >(
-            std::string( this->get_namespace() ) + std::string( "/sampler/image" ), 10 );
+            std::string( this->get_namespace() ) + std::string( "/sampler/image" ), 2 );
 
         // Subscriptions
         image_sub = this->create_subscription< sensor_msgs::msg::Image >(
-            "/zed2/zed_node/rgb/image_rect_color", 10,
+            "/zed2/zed_node/rgb/image_rect_color", 2,
             std::bind( &smap::smap_sampler_node::image_callback, this, _1 ) );
         pcl2_sub = this->create_subscription< sensor_msgs::msg::PointCloud2 >(
-            "/zed2/zed_node/point_cloud/cloud_registered", 10,
+            "/zed2/zed_node/point_cloud/cloud_registered", 2,
             std::bind( &smap::smap_sampler_node::pcl2_callback, this, _1 ) );
 
         RCLCPP_INFO( this->get_logger(), "smap_sampler_node initialized!" );
